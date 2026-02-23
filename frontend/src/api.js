@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://3.110.136.143",
+  baseURL: "https://api.hamroform.com",
 });
 
 export const processPhoto = (file, serviceKey) => {
