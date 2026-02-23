@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: "http://3.110.136.143",
 });
 
 export const processPhoto = (file, serviceKey) => {
