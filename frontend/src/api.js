@@ -68,3 +68,5 @@ export const processCustomPhoto = (file, width, height) => {
     responseType: "blob",
   });
 };
+
+
