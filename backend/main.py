@@ -10,7 +10,8 @@ app = FastAPI(title="HamroForm API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://hamroform.com"
+        "https://hamroform.com",
+        "https://www.hamroform.com",
         "http://localhost:5173",
         "http://127.0.0.1:5173"
     ],
