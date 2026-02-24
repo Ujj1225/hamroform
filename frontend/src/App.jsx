@@ -258,7 +258,7 @@ export default function App() {
       <header className="header">
         <div className="logo-text">
           {/* <img src={logo} alt="logo" /> */}
-          <img src={logo} alt="logo" className="logo" />
+          <img src={logo} alt="logo" className="logo" loading="lazy" />
           <span className="hamro">Hamro</span>
           <span className="form">Form</span>
         </div>
