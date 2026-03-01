@@ -1,20 +1,16 @@
-from PIL import Image
-import numpy as np
-import cv2
 import io
+import os
+import cv2
+import numpy as np
 import pymupdf
-from rembg import remove
-from PIL import ImageFilter, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance
+from rembg import remove, new_session
 
-
-# ---------------- LOAD FACE MODEL (once globally) ---------------- #
+BG_SESSION = new_session("birefnet-general")
 
 face_net = cv2.dnn.readNetFromCaffe(
     "deploy.prototxt", "res10_300x300_ssd_iter_140000.caffemodel"
 )
-
-
-# ---------------- COMMON UTILITIES ---------------- #
 
 
 def validate_resolution(image, min_width=400, min_height=400):
@@ -22,21 +18,18 @@ def validate_resolution(image, min_width=400, min_height=400):
         raise ValueError("Image resolution too low. Please upload a clearer image.")
 
 
-import io
-from PIL import Image
-
-
 def compress_jpg(image, max_kb, max_dimension=1920):
     target_bytes = max_kb * 1024
     if max(image.size) > max_dimension:
         image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
     low, high = 10, 95
     best = None
 
     while low <= high:
         mid = (low + high) // 2
         buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=mid, optimize=True)
+        image.save(buffer, format="JPEG", quality=mid, optimize=True, subsampling=0)
         size = buffer.tell()
 
         if size <= target_bytes:
@@ -44,6 +37,7 @@ def compress_jpg(image, max_kb, max_dimension=1920):
             low = mid + 1
         else:
             high = mid - 1
+
     if not best:
         current_scale = 0.9
         while current_scale > 0.1:
@@ -57,15 +51,9 @@ def compress_jpg(image, max_kb, max_dimension=1920):
             if buffer.tell() <= target_bytes:
                 return buffer.getvalue()
             current_scale -= 0.2
-
-        raise ValueError(
-            "Image is too large to compress to target size even with extreme resizing."
-        )
+        raise ValueError("Image is too large to compress even with extreme resizing.")
 
     return best
-
-
-# ---------------- FACE DETECTION & ICAO CROP ---------------- #
 
 
 def detect_face_crop(image):
@@ -91,7 +79,6 @@ def detect_face_crop(image):
     x1, y1, x2, y2 = box.astype("int")
 
     face_height = y2 - y1
-
     crop_h = int(face_height / 0.70)
     crop_w = int(crop_h * (35 / 45))
 
@@ -101,108 +88,67 @@ def detect_face_crop(image):
 
     x_start = max(0, center_x - crop_w // 2)
     y_start = max(0, top_y)
-
     x_end = min(w, x_start + crop_w)
     y_end = min(h, y_start + crop_h)
 
     cropped = img[y_start:y_end, x_start:x_end]
-
     if cropped.size == 0:
         raise ValueError("Invalid face crop.")
 
     return Image.fromarray(cropped)
 
 
-def force_white_background(image):
-    image = image.convert("RGBA")
-    img = np.array(image)
-
-    rgb = img[:, :, :3]
-    alpha = img[:, :, 3]
-
-    white = np.full(rgb.shape, 255, dtype=np.uint8)
-    mask = alpha > 200
-    white[mask] = rgb[mask]
-
-    return Image.fromarray(white, "RGB")
+def force_white_background(image_rgba):
+    """
+    Blends the transparent RGBA image onto a solid white canvas.
+    """
+    white_bg = Image.new("RGBA", image_rgba.size, (255, 255, 255, 255))
+    # Alpha composite ensures smooth anti-aliased edges
+    blended = Image.alpha_composite(white_bg, image_rgba)
+    return blended.convert("RGB")
 
 
-# ---------------- PHOTO PROCESSOR (UPGRADED) ---------------- #
 def process_photo(image_bytes, target_size, max_kb):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
     validate_resolution(image)
-
     image = detect_face_crop(image)
-    image_no_bg = remove(image)
+    image_no_bg = remove(
+        image,
+        session=BG_SESSION,
+        alpha_matting=True,
+        alpha_matting_foreground_threshold=240,
+        alpha_matting_background_threshold=10,
+        alpha_matting_erode_size=10,
+    )
     image_white = force_white_background(image_no_bg)
-
     enhancer = ImageEnhance.Sharpness(image_white)
-    image_white = enhancer.enhance(1.4)
-
-    contrast = ImageEnhance.Contrast(image_white)
-    image_white = contrast.enhance(1.05)
-
-    image_white = image_white.resize(target_size, Image.LANCZOS)
-    image_white = image_white.filter(ImageFilter.SHARPEN)
-
+    image_white = enhancer.enhance(1.1)
+    image_white = image_white.resize(target_size, Image.Resampling.LANCZOS)
     if max_kb is None:
         buffer = io.BytesIO()
-        image_white.save(buffer, format="JPEG", quality=95, dpi=(300, 300))
+        image_white.save(buffer, format="JPEG", quality=98, subsampling=0)
         return buffer.getvalue()
 
     return compress_jpg(image_white, max_kb)
 
 
-# ---------------- SIGNATURE PROCESSOR ---------------- #
-
-
-# def process_signature(image_bytes, target_size=(300, 120), max_kb=50):
-#     img = Image.open(io.BytesIO(image_bytes)).convert("L")
-#     img = ImageEnhance.Contrast(img).enhance(2.5)
-
-#     img_np = np.array(img)
-
-#     thresh = cv2.adaptiveThreshold(
-#         img_np,
-#         255,
-#         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-#         cv2.THRESH_BINARY_INV,
-#         21,
-#         15
-#     )
-#     kernel = np.ones((2, 2), np.uint8)
-#     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-#     thresh = cv2.dilate(thresh, kernel, iterations=1)
-#     coords = cv2.findNonZero(thresh)
-#     if coords is not None:
-#         x, y, w, h = cv2.boundingRect(coords)
-#         thresh = thresh[y:y+h, x:x+w]
-#     black_ink_np = np.where(thresh > 0, 0, 255).astype(np.uint8)
-#     sig = Image.fromarray(black_ink_np)
-#     sig = sig.resize(target_size, Image.Resampling.LANCZOS)
-#     final_sig = Image.new("RGB", sig.size, (255, 255, 255))
-#     final_sig.paste(sig)
-
-#     return compress_jpg(final_sig, max_kb)
+# ---------------- SIGNATURE & DOCUMENT PROCESSORS ---------------- #
 
 
 def process_signature(image_bytes, target_size=(300, 120), max_kb=50):
     img = Image.open(io.BytesIO(image_bytes)).convert("L")
     img_np = np.array(img)
     img_np = cv2.GaussianBlur(img_np, (3, 3), 0)
-    _, thresh = cv2.threshold(
-        img_np,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
+    _, thresh = cv2.threshold(img_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
     if np.mean(thresh) < 127:
         thresh = cv2.bitwise_not(thresh)
+
     coords = cv2.findNonZero(255 - thresh)
     if coords is not None:
         x, y, w, h = cv2.boundingRect(coords)
-        thresh = thresh[y:y+h, x:x+w]
+        thresh = thresh[y : y + h, x : x + w]
+
     sig = Image.fromarray(thresh)
     sig = sig.resize(target_size, Image.Resampling.LANCZOS)
     final_sig = Image.new("RGB", sig.size, (255, 255, 255))
@@ -211,36 +157,79 @@ def process_signature(image_bytes, target_size=(300, 120), max_kb=50):
     return compress_jpg(final_sig, max_kb)
 
 
+from PIL import Image, ImageOps
+import fitz
+
+def optimize_image(img_bytes, target_kb):
+    img = Image.open(io.BytesIO(img_bytes))
+    img = ImageOps.exif_transpose(img)
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
+    elif img.mode == "RGBA":
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[-1])
+        img = bg
+
+    max_width = 1800
+    if img.width > max_width:
+        ratio = max_width / img.width
+        new_height = int(img.height * ratio)
+        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+    quality = 90
+    output = io.BytesIO()
+
+    while quality >= 10:
+        output.seek(0)
+        output.truncate(0)
+
+        img.save(
+            output,
+            format="JPEG",
+            quality=quality,
+            optimize=True,
+            progressive=True,
+            subsampling=2,  
+        )
+
+        if len(output.getvalue()) / 1024 <= target_kb:
+            break
+
+        quality -= 5
+
+    return output.getvalue()
 
 
-# ---------------- DOCUMENT PROCESSOR ---------------- #
-
-
-def process_document(file_bytes, filename, max_kb):
+def process_document(file_bytes, filename, max_kb, iteration=0):
     ext = filename.lower().split(".")[-1]
 
     if ext in ["jpg", "jpeg", "png"]:
-        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-        return compress_jpg(image, max_kb), "image/jpeg"
+        return optimize_image(file_bytes, max_kb), "image/jpeg"
 
     elif ext == "pdf":
-        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
-        output = io.BytesIO()
-        doc.save(output, garbage=4, deflate=True, clean=True)
-        if len(output.getvalue()) / 1024 <= max_kb:
-            return output.getvalue(), "application/pdf"
-        new_doc = pymupdf.open()
-        num_pages = len(doc)
-        target_kb_per_page = max_kb // num_pages
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        new_doc = fitz.open()
+
+        buffer_factor = max(0.8 - (iteration * 0.1), 0.5)
+        usable_kb = max_kb * buffer_factor
+        target_per_page = usable_kb / len(doc)
+
+        render_scale = max(2.0 - (iteration * 0.3), 1.0)
 
         for page in doc:
-            pix = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5))
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            compressed_img_bytes = compress_jpg(img, target_kb_per_page)
-            with pymupdf.open(stream=compressed_img_bytes, filetype="jpg") as img_doc:
-                pdf_bytes = img_doc.convert_to_pdf()
-                with pymupdf.open("pdf", pdf_bytes) as single_page_pdf:
-                    new_doc.insert_pdf(single_page_pdf)
+            pix = page.get_pixmap(matrix=fitz.Matrix(render_scale, render_scale))
+            temp_img_bytes = pix.tobytes("jpg")
+
+            compressed_bytes = optimize_image(temp_img_bytes, target_per_page)
+
+            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
+            new_page.insert_image(page.rect, stream=compressed_bytes)
+
         final_output = io.BytesIO()
-        new_doc.save(final_output)
-        return final_output.getvalue(), "application/pdf"
+        new_doc.save(final_output, garbage=4, deflate=True, clean=True)
+        final_bytes = final_output.getvalue()
+
+        if len(final_bytes) / 1024 > max_kb and iteration < 4:
+            return process_document(file_bytes, filename, max_kb, iteration + 1)
+
+        return final_bytes, "application/pdf"

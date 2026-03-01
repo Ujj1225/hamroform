@@ -102,34 +102,6 @@ async def process_custom_photo(
             headers={
                 "Content-Disposition": "attachment; filename=hamroform_custom_photo.jpg"
             },
-# def compress_jpg(image, max_kb):
-#     target_bytes = max_kb * 1024
-#     low, high = 60, 95   
-#     best = None
-
-#     while low <= high:
-#         mid = (low + high) // 2
-#         buffer = io.BytesIO()
-#         image.save(
-#             buffer,
-#             format="JPEG",
-#             quality=mid,
-#             optimize=True,
-#             subsampling=0,   
-#             dpi=(300, 300)
-#         )
-#         size = buffer.tell()
-
-#         if size <= target_bytes:
-#             best = buffer.getvalue()
-#             low = mid + 1
-#         else:
-#             high = mid - 1
-
-#     if not best:
-#         raise ValueError("Unable to compress to required size.")
-
-#     return best
         )
 
     except Exception as e:
