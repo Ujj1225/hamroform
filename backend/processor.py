@@ -88,57 +88,42 @@ def process_photo(image_bytes, target_size, max_kb):
 # ---------------- SIGNATURE & DOCUMENT PROCESSORS ---------------- #
 
 
-def process_signature(image_bytes: bytes) -> bytes:
+def process_signature(image_bytes: bytes, max_kb: int = 50) -> bytes:
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         return image_bytes
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    clean = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 25
-    )
-    inverted = cv2.bitwise_not(clean)
-    horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
-    remove_horizontal = cv2.morphologyEx(
-        inverted, cv2.MORPH_OPEN, horiz_kernel, iterations=2
-    )
-    cnts_h = cv2.findContours(
-        remove_horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )[0]
-    for c in cnts_h:
-        cv2.drawContours(inverted, [c], -1, (0, 0, 0), 5)
-
-    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
-    remove_vertical = cv2.morphologyEx(
-        inverted, cv2.MORPH_OPEN, vert_kernel, iterations=2
-    )
-    cnts_v = cv2.findContours(
-        remove_vertical, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )[0]
-    for c in cnts_v:
-        cv2.drawContours(inverted, [c], -1, (0, 0, 0), 5)
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.dilate(inverted, kernel, iterations=2)
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    kernel = np.ones((3, 3), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    thresh = cv2.dilate(thresh, kernel, iterations=1)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if contours:
-        valid_cnts = [c for c in contours if cv2.contourArea(c) > 500]
-        if valid_cnts:
-            all_pts = np.concatenate(valid_cnts)
-            x, y, w, h = cv2.boundingRect(all_pts)
-            pad = 40
-            y1, y2 = max(0, y - pad), min(clean.shape[0], y + h + pad)
-            x1, x2 = max(0, x - pad), min(clean.shape[1], x + w + pad)
-
-            final_output = clean[y1:y2, x1:x2]
-        else:
-            final_output = clean
+        c = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(c)
+        pad = 20
+        x1 = max(0, x - pad)
+        y1 = max(0, y - pad)
+        x2 = min(thresh.shape[1], x + w + pad)
+        y2 = min(thresh.shape[0], y + h + pad)
+        sig = thresh[y1:y2, x1:x2]
     else:
-        final_output = clean
-    is_success, buffer = cv2.imencode(
-        ".jpg", final_output, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
-    )
+        sig = thresh
+    final = np.ones_like(sig) * 255
+    final[sig > 0] = 0  
+    quality = 90
+    while True:
+        success, buffer = cv2.imencode(
+            ".jpg", final, [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+        )
+        if not success:
+            break
+        if len(buffer) <= max_kb * 1024 or quality <= 30:
+            break
+        quality -= 5
+
     return buffer.tobytes()
 
 
