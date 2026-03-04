@@ -9,24 +9,24 @@ app = FastAPI(title="HamroForm API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://hamroform.com",
-        "https://www.hamroform.com",
-        "http://localhost:5173",
-        "http://127.0.0.1:8000"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def health_check():
+    return {"status": "running", "message": "HamroForm API is live!"}
+
 
 # ---------------- PHOTO API ---------------- #
 
 
 @app.post("/photo/process")
 async def process_passport_photo(
-    service_key: str = Form(...), 
-    photo: UploadFile = File(...)
+    service_key: str = Form(...), photo: UploadFile = File(...)
 ):
     if service_key not in SERVICES:
         raise HTTPException(status_code=400, detail="Invalid service selected.")
@@ -56,15 +56,13 @@ async def process_passport_photo(
 
 
 @app.post("/signature/process")
-async def process_sign(
-    signature: UploadFile = File(...),
-):
+async def process_sign(signature: UploadFile = File(...)):
     try:
-        sig_bytes = await signature.read()
+        if not signature.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Invalid image file")
 
-        processed = process_signature(
-            image_bytes=sig_bytes
-        )
+        sig_bytes = await signature.read()
+        processed = process_signature(sig_bytes)
 
         return StreamingResponse(
             io.BytesIO(processed),
@@ -167,3 +165,9 @@ async def process_custom_document(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=7860)
