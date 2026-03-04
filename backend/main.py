@@ -13,7 +13,7 @@ app.add_middleware(
         "https://hamroform.com",
         "https://www.hamroform.com",
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:8000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -57,7 +57,6 @@ async def process_passport_photo(
 
 @app.post("/signature/process")
 async def process_sign(
-    # max_kb: int = Form(...),
     signature: UploadFile = File(...),
 ):
     try:
@@ -65,7 +64,6 @@ async def process_sign(
 
         processed = process_signature(
             image_bytes=sig_bytes
-            # max_kb=max_kb
         )
 
         return StreamingResponse(
