@@ -1,164 +1,146 @@
 import io
-import os
-import cv2
 import numpy as np
-import pymupdf
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 from rembg import remove, new_session
+import cv2
+import fitz
 
-BG_SESSION = new_session("birefnet-general")
+BG_SESSION = new_session("u2netp")
 
-face_net = cv2.dnn.readNetFromCaffe(
-    "deploy.prototxt", "res10_300x300_ssd_iter_140000.caffemodel"
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
 
-def validate_resolution(image, min_width=400, min_height=400):
-    if image.width < min_width or image.height < min_height:
-        raise ValueError("Image resolution too low. Please upload a clearer image.")
-
-
-def compress_jpg(image, max_kb, max_dimension=1920):
-    target_bytes = max_kb * 1024
-    if max(image.size) > max_dimension:
-        image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
-
-    low, high = 10, 95
-    best = None
-
-    while low <= high:
-        mid = (low + high) // 2
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=mid, optimize=True, subsampling=0)
-        size = buffer.tell()
-
-        if size <= target_bytes:
-            best = buffer.getvalue()
-            low = mid + 1
-        else:
-            high = mid - 1
-
-    if not best:
-        current_scale = 0.9
-        while current_scale > 0.1:
-            new_size = (
-                int(image.width * current_scale),
-                int(image.height * current_scale),
-            )
-            temp_img = image.resize(new_size, Image.Resampling.LANCZOS)
-            buffer = io.BytesIO()
-            temp_img.save(buffer, format="JPEG", quality=20, optimize=True)
-            if buffer.tell() <= target_bytes:
-                return buffer.getvalue()
-            current_scale -= 0.2
-        raise ValueError("Image is too large to compress even with extreme resizing.")
-
-    return best
-
-
 def detect_face_crop(image):
-    img = np.array(image)
-    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    h, w = img_bgr.shape[:2]
+    img_array = np.array(image)
+    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    gray = cv2.equalizeHist(gray)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
 
-    blob = cv2.dnn.blobFromImage(
-        cv2.resize(img_bgr, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
-    )
+    if len(faces) == 0:
+        return image
 
-    face_net.setInput(blob)
-    detections = face_net.forward()
+    (x, y, fw, fh) = max(faces, key=lambda b: b[2] * b[3])
 
-    if detections.shape[2] == 0:
-        raise ValueError("No face detected.")
-
-    confidence = detections[0, 0, 0, 2]
-    if confidence < 0.6:
-        raise ValueError("Face detection confidence too low.")
-
-    box = detections[0, 0, 0, 3:7] * np.array([w, h, w, h])
-    x1, y1, x2, y2 = box.astype("int")
-
-    face_height = y2 - y1
-    crop_h = int(face_height / 0.70)
+    h, w, _ = img_array.shape
+    crop_h = int(fh / 0.5)
     crop_w = int(crop_h * (35 / 45))
 
-    center_x = (x1 + x2) // 2
-    eye_level = y1 + int(face_height * 0.40)
-    top_y = int(eye_level - crop_h * 0.55)
+    center_x = x + fw // 2
+    top_y = y - int(crop_h * 0.25)
+    x_start = center_x - crop_w // 2
+    y_start = top_y
+    x_end = x_start + crop_w
+    y_end = y_start + crop_h
+    left_pad = max(0, -x_start)
+    top_pad = max(0, -y_start)
+    right_pad = max(0, x_end - w)
+    bottom_pad = max(0, y_end - h)
+    actual_x1, actual_y1 = max(0, x_start), max(0, y_start)
+    actual_x2, actual_y2 = min(w, x_end), min(h, y_end)
 
-    x_start = max(0, center_x - crop_w // 2)
-    y_start = max(0, top_y)
-    x_end = min(w, x_start + crop_w)
-    y_end = min(h, y_start + crop_h)
-
-    cropped = img[y_start:y_end, x_start:x_end]
-    if cropped.size == 0:
-        raise ValueError("Invalid face crop.")
-
-    return Image.fromarray(cropped)
+    cropped_img = image.crop((actual_x1, actual_y1, actual_x2, actual_y2))
+    if left_pad or top_pad or right_pad or bottom_pad:
+        cropped_img = ImageOps.expand(
+            cropped_img, (left_pad, top_pad, right_pad, bottom_pad), fill="white"
+        )
+    return cropped_img.resize((crop_w, crop_h), Image.Resampling.LANCZOS)
 
 
 def force_white_background(image_rgba):
-    """
-    Blends the transparent RGBA image onto a solid white canvas.
-    """
+    if image_rgba.mode != "RGBA":
+        image_rgba = image_rgba.convert("RGBA")
     white_bg = Image.new("RGBA", image_rgba.size, (255, 255, 255, 255))
-    # Alpha composite ensures smooth anti-aliased edges
-    blended = Image.alpha_composite(white_bg, image_rgba)
-    return blended.convert("RGB")
+    return Image.alpha_composite(white_bg, image_rgba).convert("RGB")
+
+
+def compress_jpg(image, max_kb):
+    """Universal compressor for photos and signatures"""
+    target_bytes = max_kb * 1024
+    for q in range(95, 5, -5):
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG", quality=q, optimize=True)
+        if buf.tell() <= target_bytes:
+            return buf.getvalue()
+    scale = 0.8
+    while scale > 0.3:
+        new_size = (int(image.width * scale), int(image.height * scale))
+        temp = image.resize(new_size, Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        temp.save(buf, format="JPEG", quality=20, optimize=True)
+        if buf.tell() <= target_bytes:
+            return buf.getvalue()
+        scale -= 0.2
+    return buf.getvalue()
 
 
 def process_photo(image_bytes, target_size, max_kb):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    validate_resolution(image)
     image = detect_face_crop(image)
-    image_no_bg = remove(
-        image,
-        session=BG_SESSION,
-        alpha_matting=True,
-        alpha_matting_foreground_threshold=240,
-        alpha_matting_background_threshold=10,
-        alpha_matting_erode_size=10,
-    )
+    image_no_bg = remove(image, session=BG_SESSION)
     image_white = force_white_background(image_no_bg)
-    enhancer = ImageEnhance.Sharpness(image_white)
-    image_white = enhancer.enhance(1.1)
+    image_white = ImageEnhance.Sharpness(image_white).enhance(1.1)
     image_white = image_white.resize(target_size, Image.Resampling.LANCZOS)
-    if max_kb is None:
-        buffer = io.BytesIO()
-        image_white.save(buffer, format="JPEG", quality=98, subsampling=0)
-        return buffer.getvalue()
-
-    return compress_jpg(image_white, max_kb)
+    return compress_jpg(image_white, max_kb) if max_kb else None
 
 
 # ---------------- SIGNATURE & DOCUMENT PROCESSORS ---------------- #
 
 
-def process_signature(image_bytes, target_size=(300, 120), max_kb=50):
-    img = Image.open(io.BytesIO(image_bytes)).convert("L")
-    img_np = np.array(img)
-    img_np = cv2.GaussianBlur(img_np, (3, 3), 0)
-    _, thresh = cv2.threshold(img_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+def process_signature(image_bytes: bytes) -> bytes:
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return image_bytes
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clean = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 25
+    )
+    inverted = cv2.bitwise_not(clean)
+    horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
+    remove_horizontal = cv2.morphologyEx(
+        inverted, cv2.MORPH_OPEN, horiz_kernel, iterations=2
+    )
+    cnts_h = cv2.findContours(
+        remove_horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )[0]
+    for c in cnts_h:
+        cv2.drawContours(inverted, [c], -1, (0, 0, 0), 5)
 
-    if np.mean(thresh) < 127:
-        thresh = cv2.bitwise_not(thresh)
+    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
+    remove_vertical = cv2.morphologyEx(
+        inverted, cv2.MORPH_OPEN, vert_kernel, iterations=2
+    )
+    cnts_v = cv2.findContours(
+        remove_vertical, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )[0]
+    for c in cnts_v:
+        cv2.drawContours(inverted, [c], -1, (0, 0, 0), 5)
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.dilate(inverted, kernel, iterations=2)
 
-    coords = cv2.findNonZero(255 - thresh)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        thresh = thresh[y : y + h, x : x + w]
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    sig = Image.fromarray(thresh)
-    sig = sig.resize(target_size, Image.Resampling.LANCZOS)
-    final_sig = Image.new("RGB", sig.size, (255, 255, 255))
-    final_sig.paste(sig)
+    if contours:
+        valid_cnts = [c for c in contours if cv2.contourArea(c) > 500]
+        if valid_cnts:
+            all_pts = np.concatenate(valid_cnts)
+            x, y, w, h = cv2.boundingRect(all_pts)
+            pad = 40
+            y1, y2 = max(0, y - pad), min(clean.shape[0], y + h + pad)
+            x1, x2 = max(0, x - pad), min(clean.shape[1], x + w + pad)
 
-    return compress_jpg(final_sig, max_kb)
+            final_output = clean[y1:y2, x1:x2]
+        else:
+            final_output = clean
+    else:
+        final_output = clean
+    is_success, buffer = cv2.imencode(
+        ".jpg", final_output, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+    )
+    return buffer.tobytes()
 
-
-from PIL import Image, ImageOps
-import fitz
 
 def optimize_image(img_bytes, target_kb):
     img = Image.open(io.BytesIO(img_bytes))
@@ -189,7 +171,7 @@ def optimize_image(img_bytes, target_kb):
             quality=quality,
             optimize=True,
             progressive=True,
-            subsampling=2,  
+            subsampling=2,
         )
 
         if len(output.getvalue()) / 1024 <= target_kb:
