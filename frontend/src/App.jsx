@@ -76,13 +76,6 @@ export default function App() {
     if (savedDocSize) setCustomDocSize(savedDocSize);
   }, []);
 
-  // const handleDownload = (blob, filename) => {
-  //   const url = window.URL.createObjectURL(blob);
-  //   const a = document.createElement("a");
-  //   a.href = url;
-  //   a.download = filename;
-  //   a.click();
-  // };
 
   const handleDownload = (blob, originalFile) => {
     const extension = originalFile.name.split(".").pop();
@@ -97,95 +90,6 @@ export default function App() {
     a.remove();
     window.URL.revokeObjectURL(url);
   };
-  // const handleProcess = async () => {
-  //   if (!activeMode) {
-  //     alert("Please select a processing type.");
-  //     return;
-  //   }
-
-  //   if (!selectedService && activeMode !== "signature") {
-  //     alert("Please select a service.");
-  //     return;
-  //   }
-
-  //   if (!selectedFile) {
-  //     alert("Please upload a file first.");
-  //     return;
-  //   }
-
-  //   setLoading(true);
-
-  //   try {
-  //     let response;
-
-  //     if (activeMode === "photo") {
-  //       if (selectedService === "custom_pp") {
-  //         if (!customWidth || !customHeight) {
-  //           alert("Please enter width and height.");
-  //           setLoading(false);
-  //           return;
-  //         }
-
-  //         const formData = new FormData();
-  //         formData.append("photo", selectedFile);
-  //         formData.append("width", customWidth);
-  //         formData.append("height", customHeight);
-
-  //         response = await fetch("/photo/process/custom", {
-  //           method: "POST",
-  //           body: formData,
-  //         });
-  //         if (!response.ok) {
-  //           throw new Error("Custom photo processing failed");
-  //         }
-
-  //         const blob = await response.blob();
-  //         handleDownload(blob, "hamroform_custom_photo.jpg");
-  //       } else {
-  //         response = await processPhoto(selectedFile, selectedService);
-  //         handleDownload(response.data, "hamroform_photo.jpg");
-  //       }
-  //     } else if (activeMode === "signature") {
-  //       response = await processSignature(selectedFile);
-  //       handleDownload(response.data, "hamroform_signature.jpg");
-  //     } else if (activeMode === "document") {
-  //       if (selectedService === "custom_doc") {
-  //         if (!customDocSize) {
-  //           alert("Please enter target size in KB.");
-  //           setLoading(false);
-  //           return;
-  //         }
-
-  //         const formData = new FormData();
-  //         formData.append("document", selectedFile);
-  //         formData.append("max_kb", customDocSize);
-
-  //         const response = await processCustomDocument(
-  //           selectedFile,
-  //           customDocSize,
-  //         );
-
-  //         if (!response.ok) {
-  //           throw new Error("Custom photo processing failed");
-  //         }
-
-  //         const blob = await response.blob();
-  //         handleDownload(blob, "hamroform_custom_document");
-  //       } else {
-  //         response = await processDocument(selectedFile, selectedService);
-  //         handleDownload(response.data, "hamroform_document");
-  //         setSelectedFile(null);
-  //         setCustomWidth("");
-  //         setCustomHeight("");
-  //         setCustomDocSize("");
-  //       }
-  //     }
-  //   } catch (error) {
-  //     alert("Processing failed.");
-  //   }
-
-  //   setLoading(false);
-  // };
 
   const handleProcess = async () => {
     if (!activeMode) {
@@ -243,9 +147,6 @@ export default function App() {
       handleDownload(response.data, selectedFile);
 
       setSelectedFile(null);
-      // setCustomWidth("");
-      // setCustomHeight("");
-      // setCustomDocSize("");
     } catch (error) {
       console.error(error);
       alert("Processing failed.");
@@ -382,10 +283,6 @@ export default function App() {
           {loading ? "Processing..." : "Download"}
         </button>
       </div>
-
-      {/* <div className="ad-space">
-        Banner Advertisement Space
-      </div> */}
 
       <section className="info">
         <h2>About HamroForm</h2>

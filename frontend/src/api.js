@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://api.hamroform.com",
+  baseURL: "http://127.0.0.1:8000",
 });
 
 export const processPhoto = (file, serviceKey) => {
@@ -21,14 +21,6 @@ export const processSignature = (file) => {
   });
 };
 
-// export const processCompressor = (file) => {
-//     const formData = new FormData();
-//     formData.append("signature", file);
-//     return API.post("/signature/process", formData, {
-//         responseType: "blob",
-//     })
-// }
-
 export const processDocument = (file, serviceKey) => {
   const formData = new FormData();
   formData.append("service_key", serviceKey); 
@@ -37,16 +29,6 @@ export const processDocument = (file, serviceKey) => {
     responseType: "blob",
   });
 };
-
-// export const processCustomDocument = (file, maxKb) => {
-//   const formData = new FormData();
-//   formData.append("document", file);
-//   formData.append("max_kb", maxKb);
-
-//   return API.post("/document/process/custom", formData, {
-//     responseType: "blob",
-//   });
-// };
 
 export const processCustomDocument = (file, maxKb) => {
   const formData = new FormData();
