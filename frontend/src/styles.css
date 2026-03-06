@@ -290,3 +290,23 @@ body {
   border-color: #5c1f1f;
   box-shadow: 0 0 0 2px rgba(165, 42, 42, 0.2);
 }
+
+
+button, 
+select, 
+.upload-box {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s ease;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none; 
+}
+
+.disabled-box {
+  opacity: 0.5;
+  pointer-events: none;
+}
