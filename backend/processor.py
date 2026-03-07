@@ -82,7 +82,11 @@ def process_photo(image_bytes, target_size, max_kb):
     image_white = force_white_background(image_no_bg)
     image_white = ImageEnhance.Sharpness(image_white).enhance(1.1)
     image_white = image_white.resize(target_size, Image.Resampling.LANCZOS)
-    return compress_jpg(image_white, max_kb) if max_kb else None
+    if max_kb:
+        return compress_jpg(image_white, max_kb)
+    buf = io.BytesIO()
+    image_white.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
 
 
 # ---------------- SIGNATURE & DOCUMENT PROCESSORS ---------------- #
