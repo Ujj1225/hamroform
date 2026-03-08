@@ -95,28 +95,70 @@ def process_photo(image_bytes, target_size, max_kb):
 def process_signature(image_bytes: bytes, max_kb: int = 50) -> bytes:
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
     if img is None:
         return image_bytes
+
+    # Resize large images (speed boost)
+    h, w = img.shape[:2]
+    if w > 1500:
+        scale = 1500 / w
+        img = cv2.resize(img, None, fx=scale, fy=scale)
+
+    # grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # threshold (ink becomes white)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # -----------------------------
+    # REMOVE NOTEBOOK LINES
+    # -----------------------------
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
+    remove_lines = cv2.morphologyEx(
+        thresh, cv2.MORPH_OPEN, horizontal_kernel, iterations=2
+    )
+
+    thresh = cv2.subtract(thresh, remove_lines)
+
+    # clean noise
     kernel = np.ones((3, 3), np.uint8)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
-    thresh = cv2.dilate(thresh, kernel, iterations=1)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    # -----------------------------
+    # FIND SIGNATURE
+    # -----------------------------
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    if contours:
-        c = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(c)
-        pad = 20
-        x1 = max(0, x - pad)
-        y1 = max(0, y - pad)
-        x2 = min(thresh.shape[1], x + w + pad)
-        y2 = min(thresh.shape[0], y + h + pad)
-        sig = thresh[y1:y2, x1:x2]
-    else:
+    if not contours:
         sig = thresh
+    else:
+        # keep only reasonable contours
+        contours = [c for c in contours if cv2.contourArea(c) > 150]
+
+        if contours:
+            pts = np.concatenate(contours)
+            x, y, w, h = cv2.boundingRect(pts)
+
+            pad = 15
+            x1 = max(0, x - pad)
+            y1 = max(0, y - pad)
+            x2 = min(thresh.shape[1], x + w + pad)
+            y2 = min(thresh.shape[0], y + h + pad)
+
+            sig = thresh[y1:y2, x1:x2]
+        else:
+            sig = thresh
+
+    # -----------------------------
+    # WHITE BACKGROUND
+    # -----------------------------
     final = np.ones_like(sig) * 255
-    final[sig > 0] = 0  
+    final[sig > 0] = 0
+
+    # -----------------------------
+    # COMPRESS UNDER 50KB
+    # -----------------------------
     quality = 90
     while True:
         success, buffer = cv2.imencode(
@@ -124,8 +166,10 @@ def process_signature(image_bytes: bytes, max_kb: int = 50) -> bytes:
         )
         if not success:
             break
+
         if len(buffer) <= max_kb * 1024 or quality <= 30:
             break
+
         quality -= 5
 
     return buffer.tobytes()
