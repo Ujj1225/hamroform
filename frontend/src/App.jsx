@@ -263,8 +263,7 @@ export default function App() {
         <h2>About HamroForm</h2>
         <p className="bottom_subtitle">
           Fast, secure and compliant document processing platform for Nepal.
-          Instantly resize passport photos, optimize signatures and compress
-          documents to meet official submission requirements — all in seconds.
+          Instantly resize passport photos, compress documents to meet official submission requirements — all in seconds.
         </p>
       </section>
     </div>
