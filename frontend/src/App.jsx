@@ -220,14 +220,6 @@ export default function App() {
           </button>
 
           <button
-            className={activeMode === "signature" ? "active" : ""}
-            disabled={loading}
-            onClick={() => setActiveMode(activeMode === "signature" ? "" : "signature")}
-          >
-            Process Signature
-          </button>
-
-          <button
             className={activeMode === "document" ? "active" : ""}
             disabled={loading}
             onClick={() => setActiveMode(activeMode === "document" ? "" : "document")}
