@@ -136,7 +136,7 @@ export default function App() {
         if (prev >= 90) return prev;
         return prev + Math.random() * 4;
       });
-    }, 1500);
+    }, 900);
 
     try {
       let response;
