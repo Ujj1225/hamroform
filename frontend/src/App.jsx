@@ -56,6 +56,7 @@ export default function App() {
   const [customWidth, setCustomWidth] = useState("");
   const [customHeight, setCustomHeight] = useState("");
   const [customDocSize, setCustomDocSize] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
     const savedWidth = getWithExpiry("customWidth");
@@ -82,6 +83,27 @@ export default function App() {
     const fileInput = document.getElementById("fileInput");
     if (fileInput) fileInput.value = "";
   }, []);
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setSelectedFile(e.dataTransfer.files[0]);
+    }
+  };
 
   const handleDownload = (blob, originalFile) => {
     const extension = originalFile.name.split(".").pop();
@@ -258,10 +280,14 @@ export default function App() {
         </div>
 
         <div
-          className={`upload-box ${loading ? "disabled-box" : ""}`}
+          className={`upload-box ${loading ? "disabled-box" : ""} ${dragActive ? "drag-active" : ""}`}
           onClick={() =>
             !loading && document.getElementById("fileInput").click()
           }
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
           style={{ cursor: loading ? "not-allowed" : "pointer" }}
         >
           <input
