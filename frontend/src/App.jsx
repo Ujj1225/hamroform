@@ -66,13 +66,16 @@ export default function App() {
     if (savedDocSize) setCustomDocSize(savedDocSize);
   }, []);
 
-  // Clears selections after successful download
+  useEffect(() => {
+    const savedService = getWithExpiry("selectedService");
+    if (savedService) setSelectedService(savedService);
+  }, []);
+
   const resetForm = useCallback(() => {
     setSelectedFile(null);
-    setSelectedService("");
-    setActiveMode("");
+
     const fileInput = document.getElementById("fileInput");
-    if (fileInput) fileInput.value = ""; 
+    if (fileInput) fileInput.value = "";
   }, []);
 
   const handleDownload = (blob, originalFile) => {
@@ -86,7 +89,7 @@ export default function App() {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
-    
+
     // Trigger the auto-clear
     resetForm();
   };
@@ -113,8 +116,13 @@ export default function App() {
       let response;
       if (activeMode === "photo") {
         if (selectedService === "custom_pp") {
-          if (!customWidth || !customHeight) throw new Error("Please enter width and height.");
-          response = await processCustomPhoto(selectedFile, customWidth, customHeight);
+          if (!customWidth || !customHeight)
+            throw new Error("Please enter width and height.");
+          response = await processCustomPhoto(
+            selectedFile,
+            customWidth,
+            customHeight,
+          );
         } else {
           response = await processPhoto(selectedFile, selectedService);
         }
@@ -122,7 +130,8 @@ export default function App() {
         response = await processSignature(selectedFile);
       } else if (activeMode === "document") {
         if (selectedService === "custom_doc") {
-          if (!customDocSize) throw new Error("Please enter target size in KB.");
+          if (!customDocSize)
+            throw new Error("Please enter target size in KB.");
           response = await processCustomDocument(selectedFile, customDocSize);
         } else {
           response = await processDocument(selectedFile, selectedService);
@@ -149,12 +158,19 @@ export default function App() {
         <div className="selection">
           <select
             value={selectedService}
-            disabled={loading} // Disables during processing
-            onChange={(e) => setSelectedService(e.target.value)}
+            disabled={loading}
+            onChange={(e) => {
+              setSelectedService(e.target.value);
+              setWithExpiry("selectedService", e.target.value);
+            }}
           >
-            <option value="" disabled>Select Service</option>
+            <option value="" disabled>
+              Select Service
+            </option>
             {Object.entries(SERVICES).map(([key, value]) => (
-              <option key={key} value={key}>{value}</option>
+              <option key={key} value={key}>
+                {value}
+              </option>
             ))}
           </select>
 
@@ -222,7 +238,9 @@ export default function App() {
           <button
             className={activeMode === "document" ? "active" : ""}
             disabled={loading}
-            onClick={() => setActiveMode(activeMode === "document" ? "" : "document")}
+            onClick={() =>
+              setActiveMode(activeMode === "document" ? "" : "document")
+            }
           >
             Compress Document
           </button>
@@ -230,7 +248,9 @@ export default function App() {
 
         <div
           className={`upload-box ${loading ? "disabled-box" : ""}`}
-          onClick={() => !loading && document.getElementById("fileInput").click()}
+          onClick={() =>
+            !loading && document.getElementById("fileInput").click()
+          }
           style={{ cursor: loading ? "not-allowed" : "pointer" }}
         >
           <input
@@ -241,7 +261,7 @@ export default function App() {
             onChange={(e) => setSelectedFile(e.target.files[0])}
           />
           {selectedFile ? (
-            <span style={{ fontWeight: 'bold' }}>{selectedFile.name}</span>
+            <span style={{ fontWeight: "bold" }}>{selectedFile.name}</span>
           ) : (
             <div className="upload-text">
               <div>Click here to upload a file</div>
@@ -263,7 +283,8 @@ export default function App() {
         <h2>About HamroForm</h2>
         <p className="bottom_subtitle">
           Fast, secure and compliant document processing platform for Nepal.
-          Instantly resize passport photos, compress documents to meet official submission requirements — all in seconds.
+          Instantly resize passport photos, compress documents to meet official
+          submission requirements — all in seconds.
         </p>
       </section>
     </div>
