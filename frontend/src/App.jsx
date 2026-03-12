@@ -57,6 +57,7 @@ export default function App() {
   const [customHeight, setCustomHeight] = useState("");
   const [customDocSize, setCustomDocSize] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const savedWidth = getWithExpiry("customWidth");
@@ -116,31 +117,31 @@ export default function App() {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
-
-    // Trigger the auto-clear
     resetForm();
   };
 
   const handleProcess = async () => {
-    if (loading) return; // Prevent multiple clicks
+    if (loading) return;
 
-    if (!activeMode) {
-      alert("Please select a processing type.");
-      return;
-    }
-    if (!selectedFile) {
-      alert("Please upload a file first.");
-      return;
-    }
-    if (!selectedService && activeMode !== "signature") {
-      alert("Please select a service.");
-      return;
-    }
+    if (!activeMode) return alert("Please select a processing type.");
+    if (!selectedFile) return alert("Please upload a file first.");
+    if (!selectedService && activeMode !== "signature")
+      return alert("Please select a service.");
 
     setLoading(true);
+    setProgress(0);
+
+    // Fake progress interval
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 10;
+      });
+    }, 500);
 
     try {
       let response;
+
       if (activeMode === "photo") {
         if (selectedService === "custom_pp") {
           if (!customWidth || !customHeight)
@@ -165,15 +166,17 @@ export default function App() {
         }
       }
 
+      setProgress(100);
+      clearInterval(interval);
+
       handleDownload(response.data, selectedFile);
     } catch (error) {
-      console.error(error);
+      clearInterval(interval);
       alert(error.message || "Processing failed.");
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <div className="container">
       <header className="header">
@@ -312,8 +315,16 @@ export default function App() {
           onClick={handleProcess}
           disabled={loading || !selectedFile}
         >
-          {loading ? "Processing..." : "Download"}
+          {loading ? `Processing ${Math.round(progress)}%` : "Download"}
         </button>
+        {loading && (
+          <div className="progress-bar-container">
+            <div
+              className="progress-bar"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        )}
       </div>
 
       <section className="info">
