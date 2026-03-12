@@ -131,13 +131,12 @@ export default function App() {
     setLoading(true);
     setProgress(0);
 
-    // Fake progress interval
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return prev;
-        return prev + Math.random() * 10;
+        return prev + Math.random() * 4;
       });
-    }, 500);
+    }, 1500);
 
     try {
       let response;
