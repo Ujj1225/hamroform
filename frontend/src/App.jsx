@@ -71,6 +71,11 @@ export default function App() {
     if (savedService) setSelectedService(savedService);
   }, []);
 
+  useEffect(() => {
+    const savedMode = getWithExpiry("activeMode");
+    if (savedMode) setActiveMode(savedMode);
+  }, []);
+
   const resetForm = useCallback(() => {
     setSelectedFile(null);
 
@@ -230,7 +235,11 @@ export default function App() {
           <button
             className={activeMode === "photo" ? "active" : ""}
             disabled={loading}
-            onClick={() => setActiveMode(activeMode === "photo" ? "" : "photo")}
+            onClick={() => {
+              const mode = activeMode === "photo" ? "" : "photo";
+              setActiveMode(mode);
+              setWithExpiry("activeMode", mode);
+            }}
           >
             PP size photo
           </button>
@@ -238,9 +247,11 @@ export default function App() {
           <button
             className={activeMode === "document" ? "active" : ""}
             disabled={loading}
-            onClick={() =>
-              setActiveMode(activeMode === "document" ? "" : "document")
-            }
+            onClick={() => {
+              const mode = activeMode === "document" ? "" : "document";
+              setActiveMode(mode);
+              setWithExpiry("activeMode", mode);
+            }}
           >
             Compress Document
           </button>
