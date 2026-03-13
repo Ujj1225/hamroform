@@ -134,9 +134,9 @@ export default function App() {
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return prev;
-        return prev + Math.random() * 5;
+        return prev + Math.random() * 7;
       });
-    }, 750);
+    }, 500);
 
     try {
       let response;
